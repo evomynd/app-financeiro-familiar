@@ -24,7 +24,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import type { Category, CategoryBudget, Transaction, TransactionType } from "@/types/firestore";
+import type { Category, CategoryBudget, CreditCard, Transaction, TransactionType } from "@/types/firestore";
 
 type BudgetSortField = "category" | "budget" | "realized" | "difference";
 type BudgetSortDirection = "asc" | "desc";
@@ -66,6 +66,7 @@ export default function OrcamentoPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
 
   const [editingRowKey, setEditingRowKey] = useState<string | null>(null);
   const [editingBudgetValue, setEditingBudgetValue] = useState("");
@@ -108,11 +109,16 @@ export default function OrcamentoPage() {
         collection(db, "categoryBudgets"),
         where("user_id", "==", user.uid),
       );
+      const creditCardsQuery = query(
+        collection(db, "creditCards"),
+        where("user_id", "==", user.uid),
+      );
 
-      const [categoriesSnap, transactionsSnap, budgetsSnap] = await Promise.all([
+      const [categoriesSnap, transactionsSnap, budgetsSnap, creditCardsSnap] = await Promise.all([
         getDocs(categoriesQuery),
         getDocs(transactionsQuery),
         getDocs(budgetsQuery),
+        getDocs(creditCardsQuery),
       ]);
 
       const categoryList = categoriesSnap.docs
@@ -123,10 +129,12 @@ export default function OrcamentoPage() {
       const budgetList = budgetsSnap.docs
         .map((d) => d.data() as CategoryBudget)
         .filter((item) => item.period === period);
+      const cardList = creditCardsSnap.docs.map((d) => d.data() as CreditCard);
 
       setCategories(categoryList);
       setTransactions(txList);
       setBudgets(budgetList);
+      setCreditCards(cardList);
       setEditingRowKey(null);
       setEditingBudgetValue("");
     } catch (err) {
@@ -142,12 +150,34 @@ export default function OrcamentoPage() {
     loadData();
   }, [user?.uid, period]);
 
+  const creditCardMap = useMemo(
+    () => new Map(creditCards.map((c) => [c.id, c])),
+    [creditCards],
+  );
+
+  // Returns the billing period for a transaction.
+  // Credit card purchases after the closing day are billed in the following month.
+  const getBillingPeriod = (tx: Transaction): string => {
+    if (tx.payment_method === "credit_card" && tx.credit_card_id) {
+      const card = creditCardMap.get(tx.credit_card_id);
+      if (card) {
+        const [year, month, day] = tx.date.slice(0, 10).split("-").map(Number);
+        if (day > card.closing_day) {
+          const nextMonth = month === 12 ? 1 : month + 1;
+          const nextYear = month === 12 ? year + 1 : year;
+          return `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+        }
+      }
+    }
+    return tx.date.slice(0, 7);
+  };
+
   const transactionsInPeriod = useMemo(
     () =>
       transactions.filter(
-        (tx) => tx.date.slice(0, 7) === period && tx.status !== "cancelled",
+        (tx) => tx.status !== "cancelled" && getBillingPeriod(tx) === period,
       ),
-    [transactions, period],
+    [transactions, period, creditCardMap],
   );
 
   const incomeCategories = useMemo(

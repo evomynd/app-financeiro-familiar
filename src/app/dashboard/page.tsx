@@ -17,11 +17,12 @@ import {
   AlertCircle,
   AlertTriangle,
 } from "lucide-react";
-import { generateCashFlowForecast } from "@/lib/engine/forecast";
-import { getTransactions } from "@/lib/actions/transactions";
 import { getUserProfile } from "@/lib/actions/users";
-import { startOfMonth, endOfMonth, format, eachDayOfInterval } from "date-fns";
+import { startOfMonth, endOfMonth, format, eachDayOfInterval, subMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
+import type { CategoryBudget, Transaction } from "@/types/firestore";
 
 interface DailyCashPoint {
   day: string;
@@ -67,130 +68,136 @@ export default function DashboardPage() {
 
     const loadData = async () => {
       try {
-        // Buscar transações do mês atual
         const now = new Date();
         const monthStart = startOfMonth(now);
         const monthEnd = endOfMonth(now);
+        const currentPeriod = format(now, "yyyy-MM");
 
-        const [postedTxResult, monthTxResult, forecastResult, profileResult] = await Promise.all([
-          getTransactions(user.uid, {
-            startDate: monthStart.toISOString(),
-            endDate: monthEnd.toISOString(),
-            status: "posted",
-          }),
-          getTransactions(user.uid, {
-            startDate: monthStart.toISOString(),
-            endDate: monthEnd.toISOString(),
-          }),
-          generateCashFlowForecast(user.uid, now, 12),
+        const [transactionsSnap, budgetsSnap, profileResult] = await Promise.all([
+          getDocs(query(collection(db, "transactions"), where("user_id", "==", user.uid))),
+          getDocs(query(collection(db, "categoryBudgets"), where("user_id", "==", user.uid))),
           getUserProfile(user.uid),
         ]);
 
-        if (postedTxResult.success && postedTxResult.data) {
-          const postedTxs = postedTxResult.data.filter((tx) => tx.status === "posted");
-          const income = postedTxs
+        const allTransactions = transactionsSnap.docs.map((item) => item.data() as Transaction);
+        const allBudgets = budgetsSnap.docs.map((item) => item.data() as CategoryBudget);
+
+        const monthTransactions = allTransactions.filter(
+          (tx) => tx.date.slice(0, 7) === currentPeriod && tx.status !== "cancelled",
+        );
+
+        const income = monthTransactions
+          .filter((tx) => tx.type === "income")
+          .reduce((sum, tx) => sum + tx.amount, 0);
+        const expenses = monthTransactions
+          .filter((tx) => tx.type === "expense")
+          .reduce((sum, tx) => sum + tx.amount, 0);
+
+        setCurrentMonth({
+          income,
+          expenses,
+          balance: income - expenses,
+        });
+
+        const monthBudgets = allBudgets.filter((item) => item.period === currentPeriod);
+        const budgetIncome = monthBudgets
+          .filter((item) => item.type === "income")
+          .reduce((sum, item) => sum + item.budgeted_amount, 0);
+        const budgetExpenses = monthBudgets
+          .filter((item) => item.type === "expense")
+          .reduce((sum, item) => sum + item.budgeted_amount, 0);
+        const budgetBalance = budgetIncome - budgetExpenses;
+
+        setForecast({
+          income: budgetIncome,
+          expenses: budgetExpenses,
+          balance: budgetBalance,
+        });
+        setProjected({
+          balance: budgetBalance,
+        });
+
+        const monthlyChartData = Array.from({ length: 6 }, (_, idx) => {
+          const monthDate = subMonths(startOfMonth(now), 5 - idx);
+          const monthKey = format(monthDate, "yyyy-MM");
+          const monthTx = allTransactions.filter(
+            (tx) => tx.date.slice(0, 7) === monthKey && tx.status !== "cancelled",
+          );
+
+          const monthIncome = monthTx
             .filter((tx) => tx.type === "income")
             .reduce((sum, tx) => sum + tx.amount, 0);
-          const expenses = postedTxs
+          const monthExpenses = monthTx
             .filter((tx) => tx.type === "expense")
             .reduce((sum, tx) => sum + tx.amount, 0);
 
-          setCurrentMonth({
-            income,
-            expenses,
-            balance: income - expenses,
-          });
-        }
+          return {
+            month: format(monthDate, "MMM", { locale: ptBR }),
+            income: monthIncome,
+            expenses: monthExpenses,
+          };
+        });
+        setMonthlyData(monthlyChartData);
 
-        if (forecastResult.success && forecastResult.data) {
-          const currentMonthForecast = forecastResult.data[0];
-          if (currentMonthForecast) {
-            setForecast({
-              income: currentMonthForecast.income,
-              expenses: currentMonthForecast.expenses,
-              balance: currentMonthForecast.balance,
-            });
-            setProjected({
-              balance: currentMonthForecast.cumulativeBalance,
-            });
-          }
+        const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
-          // Preparar dados para o gráfico mensal (últimos 6 meses)
-          const monthlyChartData = forecastResult.data.slice(0, 6).map((item) => ({
-            month: format(new Date(item.month), "MMM", { locale: ptBR }),
-            income: item.income,
-            expenses: item.expenses,
-          }));
-          setMonthlyData(monthlyChartData.reverse());
-        }
+        let runningBalance = 0;
+        const dailyChartData: DailyCashPoint[] = days.map((day) => {
+          const dayKey = format(day, "yyyy-MM-dd");
+          const dayTxs = monthTransactions.filter((tx) => tx.date.slice(0, 10) === dayKey);
 
-        if (monthTxResult.success && monthTxResult.data) {
-          // Preparar dados para o gráfico diário (mês atual) com base real em lançamentos
-          const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
-          const monthTransactions = monthTxResult.data.filter((tx) => tx.status !== "cancelled");
+          const receivables = dayTxs
+            .filter((tx) => tx.type === "income")
+            .reduce((sum, tx) => sum + tx.amount, 0);
 
-          let runningBalance = 0;
-          const dailyChartData: DailyCashPoint[] = days.map((day) => {
-            const dayKey = format(day, "yyyy-MM-dd");
-            const dayTxs = monthTransactions.filter((tx) => tx.date.slice(0, 10) === dayKey);
+          const payables = dayTxs
+            .filter((tx) => tx.type === "expense")
+            .reduce((sum, tx) => sum + tx.amount, 0);
 
-            const receivables = dayTxs
-              .filter((tx) => tx.type === "income")
-              .reduce((sum, tx) => sum + tx.amount, 0);
+          runningBalance += receivables - payables;
 
-            const payables = dayTxs
-              .filter((tx) => tx.type === "expense")
-              .reduce((sum, tx) => sum + tx.amount, 0);
+          return {
+            day: format(day, "dd"),
+            balance: runningBalance,
+            payables,
+            receivables,
+          };
+        });
 
-            runningBalance += receivables - payables;
+        setDailyData(dailyChartData);
 
-            return {
-              day: format(day, "dd"),
-              balance: runningBalance,
-              payables,
-              receivables,
-            };
-          });
+        const overdraftRate = profileResult.success && profileResult.data
+          ? profileResult.data.overdraft_rate
+          : 8;
 
-          setDailyData(dailyChartData);
+        let firstNegativeDay: string | null = null;
+        let minimumBalance = 0;
+        let projectedInterest = 0;
+        let negativeDays = 0;
 
-          // Simulador de cheque especial
-          const overdraftRate = profileResult.success && profileResult.data
-            ? profileResult.data.overdraft_rate
-            : 8;
-
-          let firstNegativeDay: string | null = null;
-          let minimumBalance = 0;
-          let projectedInterest = 0;
-          let negativeDays = 0;
-
-          for (const point of dailyChartData) {
-            if (point.balance < 0) {
-              negativeDays += 1;
-              if (!firstNegativeDay) {
-                firstNegativeDay = point.day;
-              }
-              minimumBalance = Math.min(minimumBalance, point.balance);
-              projectedInterest += Math.abs(point.balance) * (overdraftRate / 100) / 30;
+        for (const point of dailyChartData) {
+          if (point.balance < 0) {
+            negativeDays += 1;
+            if (!firstNegativeDay) {
+              firstNegativeDay = point.day;
             }
+            minimumBalance = Math.min(minimumBalance, point.balance);
+            projectedInterest += Math.abs(point.balance) * (overdraftRate / 100) / 30;
           }
+        }
 
-          if (negativeDays > 0 && firstNegativeDay) {
-            setOverdraftAlert({
-              firstNegativeDay,
-              minimumBalance,
-              projectedInterest,
-              negativeDays,
-              overdraftRate,
-            });
-          } else {
-            setOverdraftAlert(null);
-          }
+        if (negativeDays > 0 && firstNegativeDay) {
+          setOverdraftAlert({
+            firstNegativeDay,
+            minimumBalance,
+            projectedInterest,
+            negativeDays,
+            overdraftRate,
+          });
         } else {
-          setDailyData([]);
           setOverdraftAlert(null);
         }
-          } catch (error) {
+      } catch (error) {
         console.error("Erro ao carregar dados:", error);
         toast.error("Erro ao carregar dados do dashboard");
       } finally {

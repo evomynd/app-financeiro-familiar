@@ -88,6 +88,15 @@ const transactionTypeOptions: Array<{ value: TransactionType; label: string }> =
   { value: "income", label: "Receita" },
 ];
 
+const brlCurrencyFormatter = new Intl.NumberFormat("pt-BR", {
+  style: "currency",
+  currency: "BRL",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
+const formatCurrencyBr = (value: number) => brlCurrencyFormatter.format(value);
+
 export default function LancamentosPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -326,7 +335,9 @@ export default function LancamentosPage() {
         .map((item) => item.data() as Transaction)
         .sort((a, b) => b.date.localeCompare(a.date));
 
-      const categoryList = categoriesSnapshot.docs.map((item) => item.data() as Category);
+      const categoryList = categoriesSnapshot.docs
+        .map((item) => item.data() as Category)
+        .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
       const cardList = cardsSnapshot.docs.map((item) => item.data() as CreditCard);
       const forecastList = forecastsSnapshot.docs
         .map((item) => item.data() as IncomeForecast)
@@ -582,7 +593,9 @@ export default function LancamentosPage() {
         };
 
         await setDoc(categoryRef, newCategory);
-        setCategories((prev) => [...prev, newCategory]);
+        setCategories((prev) =>
+          [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+        );
         finalCategoryId = newCategory.id;
       }
     }
@@ -602,7 +615,9 @@ export default function LancamentosPage() {
       };
 
       await setDoc(categoryRef, defaultCategory);
-      setCategories((prev) => [...prev, defaultCategory]);
+      setCategories((prev) =>
+        [...prev, defaultCategory].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+      );
       finalCategoryId = defaultCategory.id;
     }
 
@@ -710,7 +725,9 @@ export default function LancamentosPage() {
           };
 
           await setDoc(categoryRef, newCategory);
-          setCategories((prev) => [...prev, newCategory]);
+          setCategories((prev) =>
+            [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+          );
           targetCategoryId = categoryRef.id;
           createdCategoryName = newCategory.name;
         }
@@ -801,7 +818,9 @@ export default function LancamentosPage() {
         };
 
         await setDoc(categoryRef, defaultCategory);
-        setCategories((prev) => [...prev, defaultCategory]);
+        setCategories((prev) =>
+          [...prev, defaultCategory].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+        );
         finalCategoryId = categoryRef.id;
       }
 
@@ -944,15 +963,15 @@ export default function LancamentosPage() {
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Previsto no mês</p>
-              <p className="mt-1 text-xl font-bold text-gray-900">R$ {forecastSummary.totalPlanned.toFixed(2)}</p>
+              <p className="mt-1 text-xl font-bold text-gray-900">{formatCurrencyBr(forecastSummary.totalPlanned)}</p>
             </div>
             <div className="rounded-lg border border-green-200 bg-green-50 p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-green-700">Realizado (debitado)</p>
-              <p className="mt-1 text-xl font-bold text-green-700">R$ {forecastSummary.totalRealized.toFixed(2)}</p>
+              <p className="mt-1 text-xl font-bold text-green-700">{formatCurrencyBr(forecastSummary.totalRealized)}</p>
             </div>
             <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
               <p className="text-xs font-medium uppercase tracking-wide text-orange-700">Saldo da previsão</p>
-              <p className="mt-1 text-xl font-bold text-orange-700">R$ {forecastSummary.totalRemaining.toFixed(2)}</p>
+              <p className="mt-1 text-xl font-bold text-orange-700">{formatCurrencyBr(forecastSummary.totalRemaining)}</p>
             </div>
           </div>
 
@@ -987,10 +1006,10 @@ export default function LancamentosPage() {
                   forecastSummary.byForecast.map((item) => (
                     <tr key={item.forecast.id} className="border-b border-gray-100">
                       <td className="px-2 py-2 font-medium text-gray-900">{item.forecast.name}</td>
-                      <td className="px-2 py-2 text-right text-gray-800">R$ {item.forecast.amount.toFixed(2)}</td>
-                      <td className="px-2 py-2 text-right text-green-700">R$ {item.realized.toFixed(2)}</td>
+                      <td className="px-2 py-2 text-right text-gray-800">{formatCurrencyBr(item.forecast.amount)}</td>
+                      <td className="px-2 py-2 text-right text-green-700">{formatCurrencyBr(item.realized)}</td>
                       <td className={`px-2 py-2 text-right font-semibold ${item.remaining < 0 ? "text-red-700" : "text-orange-700"}`}>
-                        R$ {item.remaining.toFixed(2)}
+                        {formatCurrencyBr(item.remaining)}
                       </td>
                     </tr>
                   ))
@@ -1101,7 +1120,7 @@ export default function LancamentosPage() {
                       </option>
                       {eligibleForecastsForManualDate.map((forecast) => (
                         <option key={forecast.id} value={forecast.id}>
-                          {forecast.name} — R$ {forecast.amount.toFixed(2)}
+                          {forecast.name} — {formatCurrencyBr(forecast.amount)}
                         </option>
                       ))}
                     </select>
@@ -1603,7 +1622,7 @@ export default function LancamentosPage() {
                               />
                             ) : (
                               <span>
-                                {tx.type === "expense" ? "-" : "+"} {tx.amount.toFixed(2)}
+                                {tx.type === "expense" ? "-" : "+"} {formatCurrencyBr(tx.amount)}
                               </span>
                             )}
 
