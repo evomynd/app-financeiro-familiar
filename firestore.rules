@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userIdField) {
+      return isAuthenticated() && userIdField == request.auth.uid;
+    }
+
+    match /users/{userDocId} {
+      allow create: if isAuthenticated()
+        && userDocId == request.auth.uid
+        && request.resource.data.id == request.auth.uid;
+
+      allow read, delete: if isAuthenticated()
+        && userDocId == request.auth.uid
+        && resource.data.id == request.auth.uid;
+
+      allow update: if isAuthenticated()
+        && userDocId == request.auth.uid
+        && resource.data.id == request.auth.uid
+        && request.resource.data.id == request.auth.uid;
+    }
+
+    match /creditCards/{cardId} {
+      allow create: if isOwner(request.resource.data.user_id);
+      allow read, delete: if isOwner(resource.data.user_id);
+      allow update: if isOwner(resource.data.user_id)
+        && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /categories/{categoryId} {
+      allow create: if isOwner(request.resource.data.user_id);
+      allow read, delete: if isOwner(resource.data.user_id);
+      allow update: if isOwner(resource.data.user_id)
+        && request.resource.data.user_id == request.auth.uid;
+    }
+
+    match /transactions/{transactionId} {
+      allow create: if isOwner(request.resource.data.user_id);
+      allow read, delete: if isOwner(resource.data.user_id);
+      allow update: if isOwner(resource.data.user_id)
+        && request.resource.data.user_id == request.auth.uid;
+    }
+  }
+}
