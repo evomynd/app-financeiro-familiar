@@ -807,6 +807,31 @@ export default function LancamentosPage() {
       const now = new Date().toISOString();
       let finalCategoryId = manualForm.categoryId || filteredCategories[0]?.id || "";
 
+      // Se for receita e o campo nova categoria estiver preenchido, cria a categoria
+      if (manualForm.type === "income" && manualForm.newCategoryName && manualForm.newCategoryName.trim()) {
+        const normalizedTyped = manualForm.newCategoryName.toLocaleLowerCase("pt-BR").trim();
+        const existingByName = filteredCategories.find(
+          (cat) => cat.name.toLocaleLowerCase("pt-BR").trim() === normalizedTyped,
+        );
+        if (existingByName) {
+          finalCategoryId = existingByName.id;
+        } else {
+          const categoryRef = doc(collection(db, "categories"));
+          const newCategory: Category = {
+            id: categoryRef.id,
+            user_id: user.uid,
+            name: manualForm.newCategoryName.trim(),
+            type: "income",
+            is_variable: true,
+          };
+          await setDoc(categoryRef, newCategory);
+          setCategories((prev) =>
+            [...prev, newCategory].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+          );
+          finalCategoryId = categoryRef.id;
+        }
+      }
+
       if (!finalCategoryId) {
         const categoryRef = doc(collection(db, "categories"));
         const defaultCategory: Category = {
@@ -909,118 +934,6 @@ export default function LancamentosPage() {
 
         <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
           <div className="mb-4 flex items-center gap-2">
-            <FileText className="h-5 w-5 text-gray-600" />
-            <h2 className="text-lg font-semibold text-gray-900">Previsão de receitas do mês</h2>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Nome da previsão</label>
-              <input
-                type="text"
-                value={forecastForm.name}
-                onChange={(e) => setForecastForm((prev) => ({ ...prev, name: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
-                placeholder="Ex.: Extra, Receita marido..."
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Valor previsto (R$)</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={forecastForm.amount}
-                onChange={(e) => setForecastForm((prev) => ({ ...prev, amount: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Mês</label>
-              <input
-                type="month"
-                value={forecastForm.month}
-                onChange={(e) => setForecastForm((prev) => ({ ...prev, month: e.target.value }))}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
-              />
-            </div>
-
-            <div className="flex items-end">
-              <button
-                type="button"
-                onClick={handleCreateForecast}
-                disabled={creatingForecast}
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-gray-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Plus className="h-4 w-4" />
-                {creatingForecast ? "Criando..." : "Criar previsão"}
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Previsto no mês</p>
-              <p className="mt-1 text-xl font-bold text-gray-900">{formatCurrencyBr(forecastSummary.totalPlanned)}</p>
-            </div>
-            <div className="rounded-lg border border-green-200 bg-green-50 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-green-700">Realizado (debitado)</p>
-              <p className="mt-1 text-xl font-bold text-green-700">{formatCurrencyBr(forecastSummary.totalRealized)}</p>
-            </div>
-            <div className="rounded-lg border border-orange-200 bg-orange-50 p-3">
-              <p className="text-xs font-medium uppercase tracking-wide text-orange-700">Saldo da previsão</p>
-              <p className="mt-1 text-xl font-bold text-orange-700">{formatCurrencyBr(forecastSummary.totalRemaining)}</p>
-            </div>
-          </div>
-
-          <div className="mt-4 max-w-xs">
-            <label className="mb-1 block text-sm font-medium text-gray-700">Visualizar mês</label>
-            <input
-              type="month"
-              value={selectedForecastMonth}
-              onChange={(e) => setSelectedForecastMonth(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
-            />
-          </div>
-
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-left text-gray-600">
-                  <th className="px-2 py-2">Previsão</th>
-                  <th className="px-2 py-2 text-right">Valor previsto</th>
-                  <th className="px-2 py-2 text-right">Realizado</th>
-                  <th className="px-2 py-2 text-right">Saldo</th>
-                </tr>
-              </thead>
-              <tbody>
-                {forecastSummary.byForecast.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-2 py-3 text-gray-500">
-                      Nenhuma previsão cadastrada para {selectedForecastMonth}.
-                    </td>
-                  </tr>
-                ) : (
-                  forecastSummary.byForecast.map((item) => (
-                    <tr key={item.forecast.id} className="border-b border-gray-100">
-                      <td className="px-2 py-2 font-medium text-gray-900">{item.forecast.name}</td>
-                      <td className="px-2 py-2 text-right text-gray-800">{formatCurrencyBr(item.forecast.amount)}</td>
-                      <td className="px-2 py-2 text-right text-green-700">{formatCurrencyBr(item.realized)}</td>
-                      <td className={`px-2 py-2 text-right font-semibold ${item.remaining < 0 ? "text-red-700" : "text-orange-700"}`}>
-                        {formatCurrencyBr(item.remaining)}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="rounded-xl bg-white p-5 shadow-sm ring-1 ring-gray-200">
-          <div className="mb-4 flex items-center gap-2">
             <Plus className="h-5 w-5 text-gray-600" />
             <h2 className="text-lg font-semibold text-gray-900">Novo lançamento manual</h2>
           </div>
@@ -1084,49 +997,34 @@ export default function LancamentosPage() {
             </div>
 
             {manualForm.type === "income" && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 md:col-span-2 lg:col-span-3">
-                <label className="flex items-center gap-2 text-sm font-medium text-green-900">
-                  <input
-                    type="checkbox"
-                    checked={manualForm.deductFromForecast}
-                    onChange={(e) =>
-                      setManualForm((prev) => ({
-                        ...prev,
-                        deductFromForecast: e.target.checked,
-                        incomeForecastId: e.target.checked
-                          ? prev.incomeForecastId || eligibleForecastsForManualDate[0]?.id || ""
-                          : "",
-                      }))
-                    }
-                    className="h-4 w-4 rounded border-green-300 text-green-600 focus:ring-green-500"
-                  />
-                  Debitar esta receita da previsão do mês?
-                </label>
-
-                {manualForm.deductFromForecast && (
-                  <div className="mt-3 max-w-md">
-                    <label className="mb-1 block text-sm font-medium text-green-900">Qual previsão?</label>
-                    <select
-                      value={manualForm.incomeForecastId}
-                      onChange={(e) =>
-                        setManualForm((prev) => ({ ...prev, incomeForecastId: e.target.value }))
-                      }
-                      className="w-full rounded-lg border border-green-300 bg-white px-3 py-2 text-sm text-gray-900"
-                    >
-                      <option value="">
-                        {eligibleForecastsForManualDate.length === 0
-                          ? "Nenhuma previsão nesse mês (crie acima)"
-                          : "Selecione a previsão"}
+              <>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Categoria de receita</label>
+                  <select
+                    value={manualForm.categoryId}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, categoryId: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  >
+                    <option value="">
+                      {filteredCategories.length === 0
+                        ? "Sem categoria ainda"
+                        : "Selecione uma categoria existente"}
+                    </option>
+                    {filteredCategories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
                       </option>
-                      {eligibleForecastsForManualDate.map((forecast) => (
-                        <option key={forecast.id} value={forecast.id}>
-                          {forecast.name} — {formatCurrencyBr(forecast.amount)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
+                    ))}
+                  </select>
+                  <input
+                    type="text"
+                    value={manualForm.newCategoryName || ""}
+                    onChange={(e) => setManualForm((prev) => ({ ...prev, newCategoryName: e.target.value }))}
+                    placeholder="Ou digite uma nova categoria"
+                    className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  />
+                </div>
+              </>
             )}
 
             <div>
