@@ -154,7 +154,12 @@ export default function UploadPage() {
       const payload = await response.json();
 
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error ?? "Falha ao processar CSV com IA.");
+        let errorMsg = payload.error ?? "Falha ao processar CSV com IA.";
+        if (payload.details) {
+          const details = payload.details as { gemini?: string; groq?: string };
+          errorMsg += `\n• Gemini: ${details.gemini ?? "sem erro"}\n• Groq: ${details.groq ?? "sem erro"}`;
+        }
+        throw new Error(errorMsg);
       }
 
       const defaultCreditCardId =
@@ -429,7 +434,7 @@ export default function UploadPage() {
           {error && (
             <div className="mt-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <AlertCircle className="mt-0.5 h-4 w-4" />
-              <p>{error}</p>
+              <p className="whitespace-pre-line">{error}</p>
             </div>
           )}
 
