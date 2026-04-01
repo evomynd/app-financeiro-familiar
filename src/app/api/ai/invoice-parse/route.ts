@@ -110,16 +110,16 @@ function normalizeDate(dateInput: string): string {
 
 const rigidPrompt = (csvContent: string) => [
   "Você é um extrator de dados financeiros.",
-  "Converta o CSV de fatura de cartão em JSON array estrito.",
-  "Retorne APENAS JSON válido, sem markdown, sem explicações.",
-  "Cada item deve conter exatamente as chaves:",
-  "date (YYYY-MM-DD), description (string), amount (number), suggested_category (string).",
-  "Regras:",
-  "- amount deve ser número positivo em reais (ex: 123.45).",
-  "- date sempre no formato YYYY-MM-DD.",
-  "- suggested_category deve ser categoria curta em português.",
-  "- Ignore linhas de total, saldo anterior, encargos e metadados se não forem lançamentos.",
-  "CSV da fatura:",
+  "O CSV fornecido está no seguinte formato: a primeira coluna (A) contém a descrição do lançamento, e as colunas seguintes contêm os valores de cada mês, com o cabeçalho no formato mês/aa (ex: abril/26, maio/26, etc).",
+  "Para cada valor preenchido em cada linha e mês, gere um lançamento separado, com as seguintes chaves:",
+  "- description: igual ao valor da coluna A.",
+  "- date: o primeiro dia do mês correspondente ao cabeçalho da coluna (ex: 'abril/26' vira '2026-04-01').",
+  "- amount: valor da célula, como número positivo em reais (ex: 123.45).",
+  "- suggested_category: uma categoria curta em português, baseada na descrição.",
+  "Ignore células vazias e linhas que não sejam lançamentos.",
+  "Retorne APENAS um array JSON válido, sem markdown, sem explicações.",
+  "Exemplo de saída: [{\"description\":\"Aluguel\",\"date\":\"2026-04-01\",\"amount\":1200.00,\"suggested_category\":\"Moradia\"}, ...]",
+  "CSV:",
   csvContent,
 ].join("\n");
 
