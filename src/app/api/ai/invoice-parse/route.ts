@@ -15,73 +15,59 @@ const parsedInvoiceItemSchema = z.object({
 const parsedInvoiceSchema = z.array(parsedInvoiceItemSchema);
 
 function extractJsonArray(text: string): unknown {
-  // Log para debug (remover em produção)
   console.log("=== RESPOSTA BRUTA DA IA ===");
-  console.log(text.substring(0, 500));
+  console.log(text.substring(0, 800));
   console.log("=== FIM RESPOSTA ===");
 
   // Limpa markdown e espaços
-  let cleaned = text
+  const cleaned = text
     .replace(/```json/gi, "")
     .replace(/```/g, "")
     .trim();
 
-  // Tenta encontrar array JSON
+  // Tenta encontrar array JSON pelo primeiro [ e último ]
   const firstBracket = cleaned.indexOf("[");
   const lastBracket = cleaned.lastIndexOf("]");
 
   if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
     try {
       const jsonStr = cleaned.slice(firstBracket, lastBracket + 1);
-      return JSON.parse(jsonStr);
+      const parsed = JSON.parse(jsonStr);
+      if (Array.isArray(parsed)) return parsed;
     } catch (e) {
       console.error("Erro ao parsear JSON extraído:", e);
     }
   }
 
-  // Estratégia 2: Tenta parsear a resposta inteira como JSON
+  // Tenta parsear a resposta inteira como JSON
   try {
     const parsed = JSON.parse(cleaned);
-    // Se for array, retorna
-    if (Array.isArray(parsed)) {
-      return parsed;
-    }
-    // Se for objeto com array, tenta encontrar o array
+    if (Array.isArray(parsed)) return parsed;
     if (typeof parsed === "object" && parsed !== null) {
-      const values = Object.values(parsed);
-      const arrayValue = values.find((v) => Array.isArray(v));
-      if (arrayValue) {
-        return arrayValue;
-      }
+      const arrayValue = Object.values(parsed).find((v) => Array.isArray(v));
+      if (arrayValue) return arrayValue;
     }
   } catch (e) {
     console.error("Erro ao parsear JSON direto:", e);
   }
 
-  // Estratégia 3: Remove texto antes do primeiro [ e depois do último ]
-  const lines = cleaned.split("\n");
-  let startIdx = -1;
-  let endIdx = -1;
-
-  for (let i = 0; i < lines.length; i++) {
-    if (startIdx === -1 && lines[i].includes("[")) {
-      startIdx = i;
-    }
-    if (lines[i].includes("]")) {
-      endIdx = i;
-    }
+  // Retorna array vazio se a IA respondeu que não há dados
+  const lower = cleaned.toLowerCase();
+  if (
+    lower.includes("no data") ||
+    lower.includes("sem dados") ||
+    lower.includes("nenhum lançamento") ||
+    lower.includes("nenhuma transação") ||
+    lower.includes("vazio") ||
+    cleaned === "" ||
+    cleaned === "null"
+  ) {
+    return [];
   }
 
-  if (startIdx !== -1 && endIdx !== -1 && endIdx >= startIdx) {
-    try {
-      const jsonLines = lines.slice(startIdx, endIdx + 1).join("\n");
-      return JSON.parse(jsonLines);
-    } catch (e) {
-      console.error("Erro ao parsear JSON por linhas:", e);
-    }
-  }
-
-  throw new Error("Resposta da IA não contém um JSON array válido.");
+  throw new Error(
+    `Resposta da IA não é um JSON válido. Resposta recebida:\n${text.substring(0, 400)}`,
+  );
 }
 
 function normalizeDate(dateInput: string): string {
@@ -109,17 +95,34 @@ function normalizeDate(dateInput: string): string {
 }
 
 const rigidPrompt = (csvContent: string) => [
-  "Você é um extrator de dados financeiros.",
-  "O CSV fornecido está no seguinte formato: a primeira coluna (A) contém a descrição do lançamento, e as colunas seguintes contêm os valores de cada mês, com o cabeçalho no formato mês/aa (ex: abril/26, maio/26, etc).",
-  "Para cada valor preenchido em cada linha e mês, gere um lançamento separado, com as seguintes chaves:",
-  "- description: igual ao valor da coluna A.",
-  "- date: o primeiro dia do mês correspondente ao cabeçalho da coluna (ex: 'abril/26' vira '2026-04-01').",
-  "- amount: valor da célula, como número positivo em reais (ex: 123.45).",
-  "- suggested_category: uma categoria curta em português, baseada na descrição.",
-  "Ignore células vazias e linhas que não sejam lançamentos.",
-  "Retorne APENAS um array JSON válido, sem markdown, sem explicações.",
-  "Exemplo de saída: [{\"description\":\"Aluguel\",\"date\":\"2026-04-01\",\"amount\":1200.00,\"suggested_category\":\"Moradia\"}, ...]",
-  "CSV:",
+  "Você é um extrator de dados financeiros. Sua única saída deve ser JSON puro.",
+  "REGRAS ABSOLUTAS:",
+  "1. Retorne APENAS o array JSON, sem nenhum texto antes ou depois.",
+  "2. Não use markdown, não use ``` , não escreva explicações.",
+  "3. Se não houver dados, retorne apenas: []",
+  "",
+  "FORMATO DO CSV: a primeira coluna contém a descrição do lançamento.",
+  "As demais colunas contêm valores mensais com cabeçalho no formato mês/aa (ex: abril/26).",
+  "",
+  "Para cada célula com valor numérico não vazia, gere um objeto JSON com:",
+  "  description (string, da coluna A)",
+  "  date (string YYYY-MM-DD, primeiro dia do mês da coluna)",
+  "  amount (number positivo, ex: 123.45)",
+  "  suggested_category (string curta em português)",
+  "",
+  "Mapeamento de mês: janeiro=01, fevereiro=02, março=03, abril=04, maio=05, junho=06,",
+  "julho=07, agosto=08, setembro=09, outubro=10, novembro=11, dezembro=12.",
+  "Ano no formato aa: 26 = 2026, 25 = 2025, etc.",
+  "",
+  "EXEMPLO de entrada:",
+  "Descrição,abril/26,maio/26",
+  "Aluguel,1200.00,1200.00",
+  "Netflix,55.90,",
+  "",
+  "EXEMPLO de saída:",
+  '[{"description":"Aluguel","date":"2026-04-01","amount":1200.00,"suggested_category":"Moradia"},{"description":"Aluguel","date":"2026-05-01","amount":1200.00,"suggested_category":"Moradia"},{"description":"Netflix","date":"2026-04-01","amount":55.90,"suggested_category":"Entretenimento"}]',
+  "",
+  "CSV para processar:",
   csvContent,
 ].join("\n");
 
