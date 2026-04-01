@@ -45,6 +45,7 @@ interface ManualFormData {
   creditCardId: string;
   deductFromForecast: boolean;
   incomeForecastId: string;
+  newCategoryName?: string;
 }
 
 interface ForecastFormData {
