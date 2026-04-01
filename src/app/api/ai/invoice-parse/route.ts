@@ -130,9 +130,9 @@ async function tryGemini(csvContent: string): Promise<string> {
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  // Usando gemini-1.5-pro que é estável e suporta respostas longas
+  // gemini-2.0-flash é o modelo mais atual e estável
   const model = genAI.getGenerativeModel({ 
-    model: "gemini-1.5-pro",
+    model: "gemini-2.0-flash",
     generationConfig: {
       maxOutputTokens: 16000
     }
@@ -186,20 +186,25 @@ export async function POST(request: Request) {
     let text: string;
     let usedProvider = "";
 
+    let geminiErrorMsg = "";
+    let groqErrorMsg = "";
+
     try {
       text = await tryGemini(csvContent);
       usedProvider = "Gemini";
     } catch (geminiError) {
-      console.warn("Gemini falhou, tentando Groq:", geminiError);
+      geminiErrorMsg = geminiError instanceof Error ? geminiError.message : String(geminiError);
+      console.warn("Gemini falhou, tentando Groq:", geminiErrorMsg);
       try {
         text = await tryGroq(csvContent);
         usedProvider = "Groq";
       } catch (groqError) {
-        console.error("Groq também falhou:", groqError);
+        groqErrorMsg = groqError instanceof Error ? groqError.message : String(groqError);
+        console.error("Groq também falhou:", groqErrorMsg);
         return NextResponse.json(
           {
-            error:
-              "Ambas APIs de IA falharam. Configure GEMINI_API_KEY ou GROQ_API_KEY no .env.",
+            error: "Ambas APIs de IA falharam.",
+            details: { gemini: geminiErrorMsg, groq: groqErrorMsg },
           },
           { status: 500 },
         );
