@@ -12,6 +12,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   Trash2,
   X,
@@ -548,6 +549,8 @@ export default function OrcamentoPage() {
 
       setCopyPanelOpen(false);
       setSuccess(`${upserts.length} valor(es) orçados copiados de ${copySourcePeriod} para ${period}.`);
+      // Recarrega os dados para exibir o realizado correto do período atual
+      await loadData();
     } catch (err) {
       console.error(err);
       setError("Erro ao copiar valores orçados de outro período.");
@@ -890,6 +893,15 @@ export default function OrcamentoPage() {
           </div>
 
           <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => loadData()}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Atualizar
+            </button>
             <button
               type="button"
               onClick={() => setCopyPanelOpen((prev) => !prev)}
