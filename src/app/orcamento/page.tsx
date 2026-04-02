@@ -217,14 +217,14 @@ export default function OrcamentoPage() {
       .reduce((sum, tx) => sum + tx.amount, 0);
 
   const budgetTotals = useMemo(() => {
-    const incomeBudget = incomeCategories.reduce(
-      (sum, c) => sum + getBudgetByCategory(c.id),
-      0,
-    );
-    const expenseBudget = expenseCategories.reduce(
-      (sum, c) => sum + getBudgetByCategory(c.id),
-      0,
-    );
+    // Soma orçado direto dos budgets do período (independente do filtro de categorias visíveis)
+    const incomeBudget = budgets
+      .filter((b) => b.type === "income")
+      .reduce((sum, b) => sum + b.budgeted_amount, 0);
+
+    const expenseBudget = budgets
+      .filter((b) => b.type === "expense")
+      .reduce((sum, b) => sum + b.budgeted_amount, 0);
 
     const incomeRealized = transactionsInPeriod
       .filter((tx) => tx.type === "income")
@@ -242,7 +242,7 @@ export default function OrcamentoPage() {
       expenseRealized,
       resultRealized: incomeRealized - expenseRealized,
     };
-  }, [incomeCategories, expenseCategories, transactionsInPeriod, budgets]);
+  }, [budgets, transactionsInPeriod]);
 
   const startBudgetEdit = (categoryId: string, type: TransactionType) => {
     const rowKey = `${type}:${categoryId}`;
