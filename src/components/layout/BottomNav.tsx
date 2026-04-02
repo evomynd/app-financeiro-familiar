@@ -2,10 +2,11 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { Home, FileText, Upload, Settings, Wallet } from "lucide-react";
+import { Home, FileText, Upload, Settings, Wallet, BarChart2 } from "lucide-react";
 
 const navItems = [
   { href: "/dashboard", icon: Home, label: "Home" },
+  { href: "/resumo", icon: BarChart2, label: "Resumo" },
   { href: "/orcamento", icon: Wallet, label: "Orçamento" },
   { href: "/lancamentos", icon: FileText, label: "Lançamentos" },
   { href: "/upload", icon: Upload, label: "Upload" },
@@ -17,7 +18,7 @@ export function BottomNav() {
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 border-t border-gray-200 bg-white shadow-2xl">
-      <div className="mx-auto grid max-w-screen-xl grid-cols-5">
+      <div className="mx-auto grid max-w-screen-xl grid-cols-6">
         {navItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
