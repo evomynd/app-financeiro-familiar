@@ -12,10 +12,12 @@ import {
   MoreHorizontal,
   Plus,
   Save,
+  Trash2,
   X,
 } from "lucide-react";
 import {
   collection,
+  deleteDoc,
   doc,
   getDocs,
   query,
@@ -411,6 +413,28 @@ export default function OrcamentoPage() {
     }
   };
 
+  const deleteCategory = async (categoryId: string, type: TransactionType) => {
+    if (!user?.uid) return;
+    if (!confirm(`Deseja remover esta ${type === "income" ? "receita" : "despesa"} do orçamento? A categoria e seus lançamentos não serão apagados.`)) return;
+
+    setError("");
+    setSuccess("");
+
+    try {
+      const existingBudget = budgets.find((b) => b.category_id === categoryId);
+      if (existingBudget) {
+        await deleteDoc(doc(db, "categoryBudgets", existingBudget.id));
+        setBudgets((prev) => prev.filter((b) => b.id !== existingBudget.id));
+      }
+      // Remove a categoria localmente para sumir da tabela deste mês
+      setCategories((prev) => prev.filter((c) => c.id !== categoryId));
+      setSuccess(`${type === "income" ? "Receita" : "Despesa"} removida do orçamento.`);
+    } catch (err) {
+      console.error(err);
+      setError("Erro ao remover do orçamento.");
+    }
+  };
+
   const copyBudgetsFromAnotherPeriod = async () => {
     if (!user?.uid) return;
 
@@ -647,7 +671,19 @@ export default function OrcamentoPage() {
 
                   return (
                     <tr key={category.id} className="border-b border-gray-100">
-                      <td className="px-2 py-2 font-medium text-gray-900">{category.name}</td>
+                      <td className="px-2 py-2 font-medium text-gray-900">
+                        <div className="flex items-center gap-2">
+                          <span>{category.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => deleteCategory(category.id, blockType)}
+                            className="rounded p-0.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500"
+                            title={`Remover ${blockType === "income" ? "receita" : "despesa"} do orçamento`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
                       <td className="px-2 py-2 text-right">
                         <div className="inline-flex items-center gap-2">
                           {isEditing ? (
