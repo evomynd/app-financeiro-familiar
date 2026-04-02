@@ -186,15 +186,25 @@ export default function OrcamentoPage() {
     [transactions, period, creditCardMap],
   );
 
-  const incomeCategories = useMemo(
-    () => categories.filter((cat) => cat.type === "income"),
-    [categories],
-  );
+  const incomeCategories = useMemo(() => {
+    const categoryIdsWithBudget = new Set(budgets.map((b) => b.category_id));
+    const categoryIdsWithTx = new Set(
+      transactionsInPeriod.filter((tx) => tx.type === "income").map((tx) => tx.category_id),
+    );
+    return categories.filter(
+      (cat) => cat.type === "income" && (categoryIdsWithBudget.has(cat.id) || categoryIdsWithTx.has(cat.id)),
+    );
+  }, [categories, budgets, transactionsInPeriod]);
 
-  const expenseCategories = useMemo(
-    () => categories.filter((cat) => cat.type === "expense"),
-    [categories],
-  );
+  const expenseCategories = useMemo(() => {
+    const categoryIdsWithBudget = new Set(budgets.map((b) => b.category_id));
+    const categoryIdsWithTx = new Set(
+      transactionsInPeriod.filter((tx) => tx.type === "expense").map((tx) => tx.category_id),
+    );
+    return categories.filter(
+      (cat) => cat.type === "expense" && (categoryIdsWithBudget.has(cat.id) || categoryIdsWithTx.has(cat.id)),
+    );
+  }, [categories, budgets, transactionsInPeriod]);
 
   const getBudgetByCategory = (categoryId: string) => {
     const item = budgets.find((b) => b.category_id === categoryId);
