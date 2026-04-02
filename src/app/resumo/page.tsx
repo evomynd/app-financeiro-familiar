@@ -222,7 +222,7 @@ export default function ResumoPage() {
                     return (
                       <tr
                         key={row.period}
-                        className={`border-b border-gray-100 transition-colors hover:bg-gray-50 ${isFuture && isEmpty ? "text-gray-400" : ""}`}
+                        className={`border-b border-gray-100 transition-colors hover:bg-gray-50 ${isFuture && isEmpty ? "text-gray-500" : ""}`}
                       >
                         <td className="px-4 py-3 font-medium">{row.month}</td>
                         <td className="px-4 py-3 text-right">
