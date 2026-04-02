@@ -102,6 +102,23 @@ export default function DashboardPage() {
           return tx.date.slice(0, 7);
         };
 
+        // Despesa de cartão só é "realizada" se hoje >= due_day do cartão
+        // Antes do vencimento, é tratada como prevista (não realizada)
+        const today = now.getDate();
+        const isRealized = (tx: Transaction, period: string): boolean => {
+          if (tx.type !== "expense" || tx.payment_method !== "credit_card" || !tx.credit_card_id) {
+            return true;
+          }
+          const card = creditCardMap.get(tx.credit_card_id);
+          if (!card) return true;
+          // Para o mês atual: só realizado se hoje >= due_day
+          if (period === currentPeriod) {
+            return today >= card.due_day;
+          }
+          // Para meses passados: sempre realizado
+          return period < currentPeriod;
+        };
+
         const monthTransactions = allTransactions.filter(
           (tx) => getBillingPeriod(tx) === currentPeriod && tx.status !== "cancelled",
         );
@@ -109,8 +126,15 @@ export default function DashboardPage() {
         const income = monthTransactions
           .filter((tx) => tx.type === "income")
           .reduce((sum, tx) => sum + tx.amount, 0);
+
+        // Apenas despesas já realizadas (due_day chegou ou não é cartão)
         const expenses = monthTransactions
-          .filter((tx) => tx.type === "expense")
+          .filter((tx) => tx.type === "expense" && isRealized(tx, currentPeriod))
+          .reduce((sum, tx) => sum + tx.amount, 0);
+
+        // Despesas de cartão ainda não vencidas neste mês
+        const pendingCardExpenses = monthTransactions
+          .filter((tx) => tx.type === "expense" && !isRealized(tx, currentPeriod))
           .reduce((sum, tx) => sum + tx.amount, 0);
 
         setCurrentMonth({
@@ -126,11 +150,13 @@ export default function DashboardPage() {
         const budgetExpenses = monthBudgets
           .filter((item) => item.type === "expense")
           .reduce((sum, item) => sum + item.budgeted_amount, 0);
-        const budgetBalance = budgetIncome - budgetExpenses;
+        // Adiciona as despesas de cartão ainda não vencidas como previstas
+        const forecastExpenses = budgetExpenses + pendingCardExpenses;
+        const budgetBalance = budgetIncome - forecastExpenses;
 
         setForecast({
           income: budgetIncome,
-          expenses: budgetExpenses,
+          expenses: forecastExpenses,
           balance: budgetBalance,
         });
         setProjected({
@@ -148,7 +174,7 @@ export default function DashboardPage() {
             .filter((tx) => tx.type === "income")
             .reduce((sum, tx) => sum + tx.amount, 0);
           const monthExpenses = monthTx
-            .filter((tx) => tx.type === "expense")
+            .filter((tx) => tx.type === "expense" && isRealized(tx, monthKey))
             .reduce((sum, tx) => sum + tx.amount, 0);
 
           return {
@@ -164,14 +190,26 @@ export default function DashboardPage() {
         let runningBalance = 0;
         const dailyChartData: DailyCashPoint[] = days.map((day) => {
           const dayKey = format(day, "yyyy-MM-dd");
-          const dayTxs = monthTransactions.filter((tx) => tx.date.slice(0, 10) === dayKey);
+          const dayNum = day.getDate();
+
+          // Para receitas e despesas não-cartão: usa a data do lançamento
+          // Para despesas de cartão: aparece no due_day do cartão
+          const dayTxs = monthTransactions.filter((tx) => {
+            if (tx.type === "expense" && tx.payment_method === "credit_card" && tx.credit_card_id) {
+              const card = creditCardMap.get(tx.credit_card_id);
+              if (card) return dayNum === card.due_day;
+              return tx.date.slice(0, 10) === dayKey;
+            }
+            return tx.date.slice(0, 10) === dayKey;
+          });
 
           const receivables = dayTxs
             .filter((tx) => tx.type === "income")
             .reduce((sum, tx) => sum + tx.amount, 0);
 
+          // No fluxo diário, só conta a despesa de cartão se o due_day chegou
           const payables = dayTxs
-            .filter((tx) => tx.type === "expense")
+            .filter((tx) => tx.type === "expense" && isRealized(tx, currentPeriod))
             .reduce((sum, tx) => sum + tx.amount, 0);
 
           runningBalance += receivables - payables;
