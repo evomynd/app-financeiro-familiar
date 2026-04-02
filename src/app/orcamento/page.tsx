@@ -83,6 +83,8 @@ export default function OrcamentoPage() {
   const [creatingCategoryRow, setCreatingCategoryRow] = useState(false);
   const [copyPanelOpen, setCopyPanelOpen] = useState(false);
   const [copyingBudgets, setCopyingBudgets] = useState(false);
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
   const [copyFromMonth, setCopyFromMonth] = useState(now.getMonth() === 0 ? 12 : now.getMonth());
   const [copyFromYear, setCopyFromYear] = useState(
     now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear(),
@@ -481,6 +483,35 @@ export default function OrcamentoPage() {
     }
   };
 
+  const deleteAllPeriod = async () => {
+    if (!user?.uid) return;
+    setDeletingAll(true);
+    setError("");
+    setSuccess("");
+    try {
+      const batch = writeBatch(db);
+      // Apaga todos os orçamentos do período
+      for (const b of budgets) {
+        batch.delete(doc(db, "categoryBudgets", b.id));
+      }
+      // Apaga todos os lançamentos do período
+      const txIds = transactionsInPeriod.map((tx) => tx.id);
+      for (const id of txIds) {
+        batch.delete(doc(db, "transactions", id));
+      }
+      await batch.commit();
+      setBudgets([]);
+      setTransactions((prev) => prev.filter((tx) => !txIds.includes(tx.id)));
+      setShowDeleteAllModal(false);
+      setSuccess(`Todos os lançamentos e orçamentos de ${period} foram apagados.`);
+    } catch (err) {
+      console.error(err);
+      setError("Erro ao apagar os dados do período.");
+    } finally {
+      setDeletingAll(false);
+    }
+  };
+
   const copyBudgetsFromAnotherPeriod = async () => {
     if (!user?.uid) return;
 
@@ -851,6 +882,50 @@ export default function OrcamentoPage() {
 
   return (
     <MainLayout>
+      {/* Modal de confirmação - Apagar Tudo */}
+      {showDeleteAllModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-red-100">
+                <Trash2 className="h-5 w-5 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Apagar todos os dados de {period}?</h3>
+                <p className="mt-1 text-sm text-gray-600">
+                  Esta ação irá apagar <strong>permanentemente</strong> todos os lançamentos e valores orçados do período <strong>{monthOptions.find((m) => m.value === selectedMonth)?.label}/{selectedYear}</strong>.
+                  <br /><br />
+                  Esta operação <strong>não pode ser desfeita</strong>.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAllModal(false)}
+                disabled={deletingAll}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={deleteAllPeriod}
+                disabled={deletingAll}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deletingAll ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {deletingAll ? "Apagando..." : "Sim, apagar tudo"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Orçamento x Realizado</h1>
@@ -892,22 +967,32 @@ export default function OrcamentoPage() {
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-2">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => loadData()}
+                disabled={loading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+              >
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Atualizar
+              </button>
+              <button
+                type="button"
+                onClick={() => setCopyPanelOpen((prev) => !prev)}
+                className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+              >
+                {copyPanelOpen ? "Fechar cópia de orçamento" : "Copiar orçado de outro mês/ano"}
+              </button>
+            </div>
             <button
               type="button"
-              onClick={() => loadData()}
-              disabled={loading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-orange-300 bg-orange-50 px-3 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+              onClick={() => setShowDeleteAllModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Atualizar
-            </button>
-            <button
-              type="button"
-              onClick={() => setCopyPanelOpen((prev) => !prev)}
-              className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
-            >
-              {copyPanelOpen ? "Fechar cópia de orçamento" : "Copiar orçado de outro mês/ano"}
+              <Trash2 className="h-4 w-4" />
+              Apagar Tudo
             </button>
           </div>
 
