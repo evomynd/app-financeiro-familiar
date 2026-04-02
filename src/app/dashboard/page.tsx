@@ -22,7 +22,7 @@ import { startOfMonth, endOfMonth, format, eachDayOfInterval, subMonths } from "
 import { ptBR } from "date-fns/locale";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase/client";
-import type { CategoryBudget, Transaction } from "@/types/firestore";
+import type { CategoryBudget, CreditCard, Transaction } from "@/types/firestore";
 
 interface DailyCashPoint {
   day: string;
@@ -73,17 +73,37 @@ export default function DashboardPage() {
         const monthEnd = endOfMonth(now);
         const currentPeriod = format(now, "yyyy-MM");
 
-        const [transactionsSnap, budgetsSnap, profileResult] = await Promise.all([
+        const [transactionsSnap, budgetsSnap, creditCardsSnap, profileResult] = await Promise.all([
           getDocs(query(collection(db, "transactions"), where("user_id", "==", user.uid))),
           getDocs(query(collection(db, "categoryBudgets"), where("user_id", "==", user.uid))),
+          getDocs(query(collection(db, "creditCards"), where("user_id", "==", user.uid))),
           getUserProfile(user.uid),
         ]);
 
         const allTransactions = transactionsSnap.docs.map((item) => item.data() as Transaction);
         const allBudgets = budgetsSnap.docs.map((item) => item.data() as CategoryBudget);
+        const creditCardMap = new Map(
+          creditCardsSnap.docs.map((d) => [d.id, d.data() as CreditCard]),
+        );
+
+        // Retorna o período de faturamento considerando o dia de fechamento do cartão
+        const getBillingPeriod = (tx: Transaction): string => {
+          if (tx.payment_method === "credit_card" && tx.credit_card_id) {
+            const card = creditCardMap.get(tx.credit_card_id);
+            if (card) {
+              const [year, month, day] = tx.date.slice(0, 10).split("-").map(Number);
+              if (day > card.closing_day) {
+                const nextMonth = month === 12 ? 1 : month + 1;
+                const nextYear = month === 12 ? year + 1 : year;
+                return `${nextYear}-${String(nextMonth).padStart(2, "0")}`;
+              }
+            }
+          }
+          return tx.date.slice(0, 7);
+        };
 
         const monthTransactions = allTransactions.filter(
-          (tx) => tx.date.slice(0, 7) === currentPeriod && tx.status !== "cancelled",
+          (tx) => getBillingPeriod(tx) === currentPeriod && tx.status !== "cancelled",
         );
 
         const income = monthTransactions
@@ -121,7 +141,7 @@ export default function DashboardPage() {
           const monthDate = subMonths(startOfMonth(now), 5 - idx);
           const monthKey = format(monthDate, "yyyy-MM");
           const monthTx = allTransactions.filter(
-            (tx) => tx.date.slice(0, 7) === monthKey && tx.status !== "cancelled",
+            (tx) => getBillingPeriod(tx) === monthKey && tx.status !== "cancelled",
           );
 
           const monthIncome = monthTx
