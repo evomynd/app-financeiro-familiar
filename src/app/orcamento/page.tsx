@@ -10,6 +10,7 @@ import {
   ArrowUp,
   FileText,
   MoreHorizontal,
+  Pencil,
   Plus,
   Save,
   Trash2,
@@ -72,6 +73,9 @@ export default function OrcamentoPage() {
 
   const [editingRowKey, setEditingRowKey] = useState<string | null>(null);
   const [editingBudgetValue, setEditingBudgetValue] = useState("");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editingCategoryName, setEditingCategoryName] = useState("");
+  const [savingCategoryName, setSavingCategoryName] = useState(false);
   const [addingType, setAddingType] = useState<TransactionType | null>(null);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryBudget, setNewCategoryBudget] = useState("");
@@ -413,6 +417,37 @@ export default function OrcamentoPage() {
     }
   };
 
+  const startCategoryRename = (category: Category) => {
+    setEditingCategoryId(category.id);
+    setEditingCategoryName(category.name);
+  };
+
+  const saveCategoryRename = async (categoryId: string) => {
+    if (!user?.uid) return;
+    const trimmed = editingCategoryName.trim();
+    if (!trimmed) return;
+
+    setSavingCategoryName(true);
+    setError("");
+    setSuccess("");
+
+    try {
+      const ref = doc(db, "categories", categoryId);
+      await setDoc(ref, { name: trimmed }, { merge: true });
+      setCategories((prev) =>
+        prev.map((c) => (c.id === categoryId ? { ...c, name: trimmed } : c)),
+      );
+      setEditingCategoryId(null);
+      setEditingCategoryName("");
+      setSuccess("Nome da categoria atualizado.");
+    } catch (err) {
+      console.error(err);
+      setError("Erro ao renomear categoria.");
+    } finally {
+      setSavingCategoryName(false);
+    }
+  };
+
   const deleteCategory = async (categoryId: string, type: TransactionType) => {
     if (!user?.uid) return;
     if (!confirm(`Deseja remover esta ${type === "income" ? "receita" : "despesa"} do orçamento? A categoria e seus lançamentos não serão apagados.`)) return;
@@ -665,6 +700,7 @@ export default function OrcamentoPage() {
                 {sortedCategories.map((category) => {
                   const rowKey = `${blockType}:${category.id}`;
                   const isEditing = editingRowKey === rowKey;
+                  const isRenamingThis = editingCategoryId === category.id;
                   const budget = getBudgetByCategory(category.id);
                   const realized = getRealizedByCategory(category.id, blockType);
                   const difference = budget - realized;
@@ -672,17 +708,58 @@ export default function OrcamentoPage() {
                   return (
                     <tr key={category.id} className="border-b border-gray-100">
                       <td className="px-2 py-2 font-medium text-gray-900">
-                        <div className="flex items-center gap-2">
-                          <span>{category.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => deleteCategory(category.id, blockType)}
-                            className="rounded p-0.5 text-gray-300 transition-colors hover:bg-red-50 hover:text-red-500"
-                            title={`Remover ${blockType === "income" ? "receita" : "despesa"} do orçamento`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                        {isRenamingThis ? (
+                          <div className="inline-flex items-center gap-1">
+                            <input
+                              type="text"
+                              value={editingCategoryName}
+                              onChange={(e) => setEditingCategoryName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") { e.preventDefault(); saveCategoryRename(category.id); }
+                                if (e.key === "Escape") { setEditingCategoryId(null); }
+                              }}
+                              autoFocus
+                              className="w-40 rounded border border-blue-300 px-2 py-0.5 text-sm text-gray-900"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => saveCategoryRename(category.id)}
+                              disabled={savingCategoryName}
+                              className="rounded p-0.5 text-blue-600 hover:bg-blue-50 disabled:opacity-50"
+                              title="Salvar nome"
+                            >
+                              <Save className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingCategoryId(null)}
+                              className="rounded p-0.5 text-gray-500 hover:bg-gray-100"
+                              title="Cancelar"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="group flex items-center gap-1">
+                            <span>{category.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => startCategoryRename(category)}
+                              className="rounded p-0.5 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-blue-50 hover:text-blue-500"
+                              title="Renomear categoria"
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteCategory(category.id, blockType)}
+                              className="rounded p-0.5 text-gray-300 opacity-0 transition-opacity group-hover:opacity-100 hover:bg-red-50 hover:text-red-500"
+                              title={`Remover ${blockType === "income" ? "receita" : "despesa"} do orçamento`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </div>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-right">
                         <div className="inline-flex items-center gap-2">
