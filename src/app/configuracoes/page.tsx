@@ -16,7 +16,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  getCreditCards,
+  collection,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase/client";
+import {
   createCreditCard,
   updateCreditCard,
   deleteCreditCard,
@@ -44,14 +50,12 @@ export default function ConfiguracoesPage() {
 
     const loadData = async () => {
       try {
-        const [cardsResult, profileResult] = await Promise.all([
-          getCreditCards(user.uid),
+        const [cardsSnap, profileResult] = await Promise.all([
+          getDocs(query(collection(db, "creditCards"), where("user_id", "==", user.uid))),
           getUserProfile(user.uid),
         ]);
 
-        if (cardsResult.success && cardsResult.data) {
-          setCards(cardsResult.data);
-        }
+        setCards(cardsSnap.docs.map((d) => d.data() as CreditCard));
 
         if (profileResult.success && profileResult.data) {
           setOverdraftRate(profileResult.data.overdraft_rate);
